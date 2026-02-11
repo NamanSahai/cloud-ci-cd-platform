@@ -1,5 +1,10 @@
 FROM ubuntu:22.04
+
 WORKDIR /app
-COPY app.sh
+
+COPY app.sh /app/
+
 RUN chmod +x app.sh
+
 CMD ["./app.sh"]
+
