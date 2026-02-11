@@ -2,12 +2,18 @@ pipeline {
     agent any
 
     environment {
-        WORKDIR = "${env.WORKSPACE}/app"
-        IMAGE_NAME = 'ci-demo-image'
-        CONTAINER_NAME = 'ci-demo-container'
+        IMAGE_NAME = "namansahai/cloud-ci-demo"
+        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        CONTAINER_NAME = "ci-demo-container"
     }
 
     stages {
+
+        stage('Checkout Code') {
+            steps {
+                checkout scm
+            }
+        }
 
         stage('Verify Docker') {
             steps {
@@ -17,19 +23,44 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                    cd $WORKDIR
-                    docker build -t $IMAGE_NAME .
-                '''
+                dir('app') {
+                    sh """
+                        docker build -t $IMAGE_NAME:$IMAGE_TAG .
+                        docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest
+                    """
+                }
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Login to Docker Hub') {
             steps {
-                sh '''
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    """
+                }
+            }
+        }
+
+        stage('Push Image to Docker Hub') {
+            steps {
+                sh """
+                    docker push $IMAGE_NAME:$IMAGE_TAG
+                    docker push $IMAGE_NAME:latest
+                """
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                sh """
                     docker rm -f $CONTAINER_NAME || true
-                    docker run --name $CONTAINER_NAME $IMAGE_NAME
-                '''
+                    docker run -d --name $CONTAINER_NAME $IMAGE_NAME:latest
+                """
             }
         }
     }
@@ -37,6 +68,12 @@ pipeline {
     post {
         always {
             echo 'Pipeline execution finished.'
+        }
+        success {
+            echo 'Image successfully built, pushed, and deployed.'
+        }
+        failure {
+            echo 'Pipeline failed. Check logs.'
         }
     }
 }
